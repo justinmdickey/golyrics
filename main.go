@@ -86,7 +86,7 @@ func fetchLyrics(song string) tea.Msg {
 	}
 
 	var lyricsURL string
-	doc.Find("a.mini_card").Each(func(i int, s *goquery.Selection) {
+	doc.Find("a[class^='SearchResultSong']").Each(func(i int, s *goquery.Selection) {
 		if i == 0 {
 			lyricsURL, _ = s.Attr("href")
 		}
@@ -102,26 +102,30 @@ func fetchLyrics(song string) tea.Msg {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return lyricsMsg("Error reading lyrics page")
-	}
-
-	doc, err = goquery.NewDocumentFromReader(bytes.NewReader(body))
+	doc, err = goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		return lyricsMsg("Error parsing lyrics page")
 	}
 
-	lyrics := doc.Find("div.Lyrics__Container-sc-1ynbvzw-5").Text()
-	if lyrics == "" {
-		lyrics = doc.Find("div.lyrics").Text()
-	}
+	var lyrics strings.Builder
+	doc.Find("div[class^='Lyrics__Container']").Each(func(i int, s *goquery.Selection) {
+		// Replace <br> with newlines
+		s.Find("br").Each(func(i int, s *goquery.Selection) {
+			s.ReplaceWithHtml("\n")
+		})
+		lyrics.WriteString(s.Text() + "\n")
+	})
 
-	if lyrics == "" {
+	if lyrics.Len() == 0 {
 		return lyricsMsg("No lyrics found")
 	}
 
-	return lyricsMsg(lyrics)
+	// Clean up the lyrics
+	cleanLyrics := strings.ReplaceAll(lyrics.String(), "[", "\n[")
+	cleanLyrics = strings.ReplaceAll(cleanLyrics, "]", "]\n")
+	cleanLyrics = strings.ReplaceAll(cleanLyrics, "\n\n\n", "\n\n")
+
+	return lyricsMsg(cleanLyrics)
 }
 
 func (m model) Init() tea.Cmd {
